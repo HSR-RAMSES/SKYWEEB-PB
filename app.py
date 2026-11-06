@@ -354,4 +354,35 @@ x.onerror=()=>msg.textContent='Se cortó la conexión.';x.send(new FormData(f));
 function loginView(tab){
 if(ME.logged){$('#lbox').innerHTML=`<div class=card><h3>Hola, ${esc(ME.name)}</h3><p class=mut>${ME.admin?'Eres administrador: ya puedes subir y borrar contenido.':'Tu sesión está iniciada.'}</p><button class=btn id=out>Cerrar sesión</button></div>`;
 $('#out').onclick=async()=>{await J('/api/logout');await boot()};return}
-$('#lbox').innerHTML=`<div class=row><button class="btn ${tab=='in'?'':'ghost'}" id=ti>Iniciar sesión</b
+$('#lbox').innerHTML=`<div class=row><button class="btn ${tab=='in'?'':'ghost'}" id=ti>Iniciar sesión</button><button class="btn ${tab=='up'?'':'ghost'}" id=tu>Registrarse</button></div>`+
+(tab=='in'?`<div class=card><input id=a1 placeholder="Nombre" autocomplete=username><input id=a2 placeholder="Número" inputmode=tel autocomplete=tel><input id=a3 type=password placeholder="Contraseña" autocomplete=current-password><button class=btn id=go>Entrar</button><p id=msg></p></div>`:
+`<div class=card><p class=mut>Pon tu nombre y número. Te daremos una contraseña para entrar cuando quieras.</p><input id=a1 placeholder="Tu nombre" autocomplete=name><input id=a2 placeholder="Tu número" inputmode=tel autocomplete=tel><button class=btn id=go>Registrarme</button><p id=msg></p></div>`);
+$('#ti').onclick=()=>loginView('in');$('#tu').onclick=()=>loginView('up');
+$('#go').onclick=async()=>{const m=$('#msg');
+if(tab=='in'){const j=await J('/api/login',{name:$('#a1').value,phone:$('#a2').value,password:$('#a3').value});
+if(j.ok)await boot();else m.textContent=j.msg}
+else{const j=await J('/api/register',{name:$('#a1').value,phone:$('#a2').value});
+if(j.ok){await boot();$('#lbox').insertAdjacentHTML('afterbegin',`<div class=card><h3>¡Registro listo, ${esc(j.name)}!</h3><p>Tu contraseña es:</p><div class=pw>${esc(j.password)}</div><p class=mut>Guárdala o toma captura. No se vuelve a mostrar. Si la pierdes, pídeme una nueva por WhatsApp.</p></div>`)}else m.textContent=j.msg}}}
+async function boot(){ME=await fetch('/api/me').then(r=>r.json());document.body.classList.toggle('isadm',!!ME.admin);loginView('in');await loadData();if(ME.admin)await loadUsers();route()}
+boot();
+
+const FAQ=[['¿Cómo me registro?','En Login toca Registrarse, pon tu nombre y número y te damos tu contraseña.'],
+['¿Olvidé mi contraseña?','Escríbeme por WhatsApp y te genero una nueva.'],
+['¿Dónde descargo las apps?','En el menú, sección Apps.'],
+['¿Cómo entro al grupo?','En el menú, sección Comunidad, toca "Unirme al grupo".'],
+['¿Cambiar el color?','En Configuración eliges morado, azul o verde, y modo claro u oscuro.']];
+function say(t,c){const m=document.createElement('div');m.className='m '+c;m.innerHTML=t;$('#chat').append(m);$('#chat').scrollTop=1e9}
+say('Hola, soy el asistente de SKY WEEB. Elige una pregunta.','bot');
+FAQ.forEach(([q,a])=>{const b=document.createElement('button');b.className='q';b.textContent=q;
+b.onclick=()=>{say(esc(q),'me');setTimeout(()=>say(esc(a),'bot'),300)};$('#qs').append(b)});
+const o=document.createElement('button');o.className='q';o.textContent='Otra duda';
+o.onclick=()=>{say('Otra duda','me');setTimeout(()=>say(`Escríbeme directo: <a href="https://wa.me/${WA}" target=_blank rel=noopener>abrir WhatsApp</a>`,'bot'),300)};$('#qs').append(o);
+</script></body></html>
+"""
+
+@app.get("/")
+def home():
+    return PAGE
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))

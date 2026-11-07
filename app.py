@@ -25,7 +25,8 @@ UP = os.environ.get("UPLOAD_DIR", "uploads")
 os.makedirs(UP, exist_ok=True)
 VID, IMG = {"mp4", "webm", "mov", "mkv"}, {"png", "jpg", "jpeg", "gif", "webp"}
 APPX = {"apk", "xapk", "zip", "rar", "7z", "exe", "msi", "ipa"}
-T = {"posts": "media", "tutorials": "url", "apps": "url"}
+T = {"posts": "media", "tutorials": "url", "apps": "url", "projects": "url"}
+PRJ = APPX | {"html", "htm"}
 
 def db():
     c = sqlite3.connect(DB)
@@ -34,12 +35,17 @@ def db():
 
 def init():
     c = db()
+    nuevo = not c.execute("SELECT 1 FROM sqlite_master WHERE name='projects'").fetchone()
     c.executescript("""
     CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, name TEXT, phone TEXT UNIQUE, ts REAL);
     CREATE TABLE IF NOT EXISTS posts(id INTEGER PRIMARY KEY, kind TEXT, title TEXT, body TEXT, media TEXT, ts REAL);
     CREATE TABLE IF NOT EXISTS tutorials(id INTEGER PRIMARY KEY, title TEXT, url TEXT, ts REAL);
     CREATE TABLE IF NOT EXISTS apps(id INTEGER PRIMARY KEY, name TEXT, info TEXT, url TEXT, ts REAL);
+    CREATE TABLE IF NOT EXISTS projects(id INTEGER PRIMARY KEY, name TEXT, info TEXT, url TEXT, ts REAL);
     """)
+    if nuevo:
+        c.execute("INSERT INTO projects(name,info,url,ts) VALUES(?,?,?,?)",
+                  ("Consola de prueba", "", "https://cobrahsr.onrender.com/", time.time()))
     try:
         c.execute("ALTER TABLE users ADD COLUMN pw TEXT")
     except sqlite3.OperationalError:
@@ -208,10 +214,10 @@ def add(t):
             sql, args = "INSERT INTO tutorials(title,url,ts) VALUES(?,?,?)", (title, u, now)
         else:
             name = (f.get("name") or "").strip()
-            u = save(request.files.get("file"), APPX) or okurl(f.get("link"))
+            u = save(request.files.get("file"), PRJ if t == "projects" else APPX) or okurl(f.get("link"))
             if not name or not u:
                 raise ValueError("Pon nombre y un archivo o un link.")
-            sql, args = "INSERT INTO apps(name,info,url,ts) VALUES(?,?,?,?)", (name, f.get("info", ""), u, now)
+            sql, args = f"INSERT INTO {t}(name,info,url,ts) VALUES(?,?,?,?)", (name, f.get("info", ""), u, now)
     except ValueError as e:
         return jsonify(ok=False, msg=str(e)), 400
     c = db(); c.execute(sql, args); c.commit(); c.close()
@@ -236,38 +242,46 @@ PAGE = r"""
 <meta name=viewport content="width=device-width,initial-scale=1"><title>SKY WEEB</title>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;800&family=Nunito:wght@400;700&display=swap" rel=stylesheet>
 <style>
-:root{--acc:#8b5cf6;--bg:#f4f6ff;--card:#fff;--tx:#1a1d3a;--mut:#6b6f93;--ln:#dfe3f7}
-:root[data-t=dark]{--bg:#0e1124;--card:#171b36;--tx:#eef0ff;--mut:#9ca1c9;--ln:#272c52}
-:root[data-c=azul]{--acc:#3b82f6}:root[data-c=verde]{--acc:#10b981}
+:root{--acc:#facc15;--acc2:#f59e0b;--on:#15120a;--glow:250,204,21;--bg:#f6f4ee;--card:#fff;--tx:#1a1a1f;--mut:#6b6b76;--ln:#e6e2d6;--inp:#f6f4ee}
+:root[data-t=dark]{--bg:#08080c;--card:rgba(20,20,26,.72);--tx:#f5f5f7;--mut:#a1a1aa;--ln:rgba(255,255,255,.1);--inp:rgba(0,0,0,.4)}
+:root[data-c=morado]{--acc:#8b5cf6;--acc2:#6d28d9;--on:#fff;--glow:139,92,246}
+:root[data-c=azul]{--acc:#3b82f6;--acc2:#2563eb;--on:#fff;--glow:59,130,246}
+:root[data-c=verde]{--acc:#10b981;--acc2:#059669;--on:#fff;--glow:16,185,129}
+:root[data-t=dark] body{background:radial-gradient(900px 420px at 90% -5%,rgba(var(--glow),.30),transparent 62%),radial-gradient(700px 460px at -15% 45%,rgba(var(--glow),.16),transparent 60%),conic-gradient(from 210deg at 75% 95%,#08080c,#17120a,#08080c 38%,#241a08 58%,#08080c);background-attachment:fixed}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.5 Nunito,sans-serif}
 h1,h2,h3{font-family:'Bricolage Grotesque',sans-serif;margin:0}
-header{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--card);border-bottom:1px solid var(--ln)}
-#burger{width:44px;height:44px;border:0;border-radius:12px;background:var(--acc);color:#fff;font-size:26px;cursor:pointer}
+header{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--card);border-bottom:1px solid var(--ln);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+#burger{width:44px;height:44px;border:0;border-radius:12px;background:linear-gradient(180deg,var(--acc),var(--acc2));color:var(--on);font-size:26px;cursor:pointer;box-shadow:0 4px 16px rgba(var(--glow),.35)}
 .logo{font:800 22px 'Bricolage Grotesque';letter-spacing:.5px}.logo b{color:var(--acc)}
 nav{position:fixed;inset:0 auto 0 0;width:260px;max-width:80vw;background:var(--card);border-right:1px solid var(--ln);padding:72px 12px 12px;transform:translateX(-100%);transition:transform .25s;z-index:4}
 nav.open{transform:none}#veil{position:fixed;inset:0;background:#0006;display:none;z-index:3}#veil.on{display:block}
 nav a{display:block;padding:12px 14px;margin:4px 0;border-radius:12px;color:var(--tx);text-decoration:none;font-weight:700}
-nav a.on,nav a:hover{background:var(--acc);color:#fff}
+nav a.on,nav a:hover{background:linear-gradient(180deg,var(--acc),var(--acc2));color:var(--on)}
 main{max-width:720px;margin:auto;padding:16px}section{display:none}section.on{display:block}
-.card{background:var(--card);border:1px solid var(--ln);border-radius:16px;padding:14px;margin:12px 0}
+.card{background:var(--card);border:1px solid var(--ln);border-radius:16px;padding:14px;margin:12px 0;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
 .card img,.card video{width:100%;border-radius:12px;margin-top:8px}.tag{color:var(--acc);font-weight:700;font-size:14px}
-.btn{display:inline-block;padding:11px 18px;border:0;border-radius:12px;background:var(--acc);color:#fff;font:700 16px Nunito;text-decoration:none;cursor:pointer}
-.btn.del{background:#d33;padding:7px 12px;font-size:14px;margin-top:8px}.btn.ghost{background:none;color:var(--acc);border:2px solid var(--acc)}
-input,select,textarea{width:100%;padding:12px;margin:6px 0;border-radius:12px;border:1px solid var(--ln);background:var(--bg);color:var(--tx);font:inherit}
+.btn{display:inline-block;padding:12px 20px;border:0;border-radius:12px;background:linear-gradient(180deg,var(--acc),var(--acc2));color:var(--on);font:800 16px Nunito;text-decoration:none;cursor:pointer;box-shadow:0 6px 20px rgba(var(--glow),.35);transition:transform .15s,filter .15s}.btn:hover{filter:brightness(1.08);transform:translateY(-1px)}
+.btn.del{background:#d33;color:#fff;box-shadow:none;padding:7px 12px;font-size:14px;margin-top:8px}.btn.ghost{background:none;color:var(--acc);border:2px solid var(--acc);box-shadow:none}
+input,select,textarea{width:100%;padding:12px;margin:6px 0;border-radius:12px;border:1px solid var(--ln);background:var(--inp);color:var(--tx);font:inherit}
 .mut{color:var(--mut)}.row{display:flex;gap:10px;flex-wrap:wrap;margin:8px 0}
 .dot{width:38px;height:38px;border-radius:50%;border:3px solid transparent;cursor:pointer}.dot.on{border-color:var(--tx)}
 #chat{height:300px;overflow:auto;display:flex;flex-direction:column;gap:8px}
-.m{padding:9px 13px;border-radius:14px;max-width:85%}.bot{background:var(--bg);align-self:flex-start}.me{background:var(--acc);color:#fff;align-self:flex-end}
+.m{padding:9px 13px;border-radius:14px;max-width:85%}.bot{background:var(--inp);align-self:flex-start}.me{background:var(--acc);color:var(--on);align-self:flex-end}
 .q{padding:8px 12px;border-radius:20px;border:1px solid var(--acc);background:none;color:var(--acc);font:700 14px Nunito;cursor:pointer}
 .adm,.adm-l{display:none}body.isadm .adm{display:block}body.isadm .adm-l{display:block}
 .pw{font:800 30px 'Bricolage Grotesque';letter-spacing:3px;text-align:center;padding:14px;border:2px dashed var(--acc);border-radius:14px;margin:10px 0;user-select:all}
+.glass{padding:28px 22px;background:linear-gradient(145deg,rgba(255,255,255,.10),rgba(255,255,255,.03));background-color:var(--card);border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);clip-path:polygon(30px 0,100% 0,100% calc(100% - 30px),calc(100% - 30px) 100%,0 100%,0 30px);box-shadow:0 24px 60px #0007;margin:14px 0}
+.glass h2{font-size:30px;line-height:1.1}.glass h2 span{color:var(--acc)}.glass p{margin:6px 0}
+.glass label{display:block;margin-top:12px;font-weight:700;font-size:14px}
+.fld{position:relative}.eye{position:absolute;right:6px;top:10px;border:0;background:none;color:var(--mut);font-size:19px;cursor:pointer;padding:4px 8px}
+.btn.wide{width:100%;margin-top:16px;text-align:center}.c{text-align:center}.c a{color:var(--acc);font-weight:800}
 :focus-visible{outline:3px solid var(--acc);outline-offset:2px}
 </style></head><body>
 <header><button id=burger aria-label="Menú">&#9776;</button><div class=logo>SKY <b>WEEB</b></div></header>
 <div id=veil></div>
 <nav id=nav>
 <a href="#home">Home</a><a href="#login">Login</a><a href="#config">Configuración</a><a href="#comunidad">Comunidad</a>
-<a href="#tutoriales">Tutoriales</a><a href="#apps">Apps</a><a href="#ayuda">Ayuda</a><a href="#panel" class=adm-l>Usuarios</a></nav>
+<a href="#tutoriales">Tutoriales</a><a href="#apps">Apps</a><a href="#proyectos">Proyectos</a><a href="#ayuda">Ayuda</a><a href="#panel" class=adm-l>Usuarios</a></nav>
 <main>
 <section id=home><h2>Novedades</h2>
 <form class="card adm" data-t=posts><h3>Nueva publicación</h3>
@@ -281,6 +295,7 @@ input,select,textarea{width:100%;padding:12px;margin:6px 0;border-radius:12px;bo
 
 <section id=config><h2>Configuración</h2>
 <div class=card><h3>Color de botones e icono</h3><div class=row>
+<div class=dot data-c=dorado style="background:#facc15" title=Dorado></div>
 <div class=dot data-c=morado style="background:#8b5cf6" title=Morado></div>
 <div class=dot data-c=azul style="background:#3b82f6" title=Azul></div>
 <div class=dot data-c=verde style="background:#10b981" title=Verde></div></div></div>
@@ -301,6 +316,13 @@ input,select,textarea{width:100%;padding:12px;margin:6px 0;border-radius:12px;bo
 <button class=btn>Agregar</button><p class=mut></p></form>
 <div id=applist></div></section>
 
+<section id=proyectos><h2>Proyectos</h2>
+<form class="card adm" data-t=projects><h3>Nuevo proyecto</h3>
+<input name=name placeholder="Nombre del botón" required><input name=info placeholder="Descripción corta (opcional)">
+<input type=file name=file accept=".html,.htm,.apk,.xapk,.zip,.rar,.7z,.exe,.msi,.ipa"><input name=link placeholder="o pega el link de la página o app">
+<button class=btn>Agregar</button><p class=mut></p></form>
+<div id=projlist></div></section>
+
 <section id=ayuda><h2>Ayuda</h2><div class=card><div id=chat></div><div class=row id=qs></div></div>
 <a class=btn id=wa target=_blank rel=noopener>Escribirme por WhatsApp</a></section>
 
@@ -314,7 +336,7 @@ const J=(u,b)=>fetch(u,{method:'POST',headers:{'Content-Type':'application/json'
 let ME={},D={},WA='';
 function setC(c){R.dataset.c=c;ls.set('c',c);document.querySelectorAll('.dot').forEach(d=>d.classList.toggle('on',d.dataset.c==c))}
 function setT(t){R.dataset.t=t;ls.set('t',t)}
-setC(ls.get('c','morado'));setT(ls.get('t',matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'));
+setC(ls.get('c','dorado'));setT(ls.get('t','dark'));
 document.querySelectorAll('.dot').forEach(d=>d.onclick=()=>setC(d.dataset.c));
 document.querySelectorAll('button[data-t]').forEach(b=>b.onclick=()=>setT(b.dataset.t));
 const nav=$('#nav'),veil=$('#veil');
@@ -335,7 +357,8 @@ function media(u){if(!u)return'';return /\.(mp4|webm|mov|mkv)$/i.test(u)?`<video
 function draw(){
 $('#posts').innerHTML=(D.posts||[]).map(p=>`<div class=card><span class=tag>${L[p.kind]||'Publicación'}</span><h3>${esc(p.title)}</h3><p>${esc(p.body)}</p>${media(p.media)}${delb('posts',p.id)}</div>`).join('')||empty('Aún no hay publicaciones.');
 $('#tuts').innerHTML=(D.tutorials||[]).map(t=>`<div class=card><h3>${esc(t.title)}</h3>${loc(t.url)?media(t.url):`<p><a class=btn href="${esc(t.url)}" target=_blank rel=noopener>Ver video</a></p>`}${delb('tutorials',t.id)}</div>`).join('')||empty('Aún no hay tutoriales.');
-$('#applist').innerHTML=(D.apps||[]).map(a=>`<div class=card><h3>${esc(a.name)}</h3><p class=mut>${esc(a.info)}</p><a class=btn href="${esc(a.url)}" ${loc(a.url)?'download':'target=_blank rel=noopener'}>Descargar</a><br>${delb('apps',a.id)}</div>`).join('')||empty('Aún no hay apps.')}
+$('#applist').innerHTML=(D.apps||[]).map(a=>`<div class=card><h3>${esc(a.name)}</h3><p class=mut>${esc(a.info)}</p><a class=btn href="${esc(a.url)}" ${loc(a.url)?'download':'target=_blank rel=noopener'}>Descargar</a><br>${delb('apps',a.id)}</div>`).join('')||empty('Aún no hay apps.');
+$('#projlist').innerHTML=(D.projects||[]).map(p=>`<div class=card>${p.info?`<p class=mut>${esc(p.info)}</p>`:''}<a class=btn href="${esc(p.url)}" ${loc(p.url)&&!/\.html?$/i.test(p.url)?'download':'target=_blank rel=noopener'}>${esc(p.name)}</a><br>${delb('projects',p.id)}</div>`).join('')||empty('Aún no hay proyectos.')}
 async function loadData(){D=await fetch('/api/data').then(r=>r.json());$('#grp').href=D.group;$('#wa').href='https://wa.me/'+D.wa;WA=D.wa;draw()}
 async function del(t,id){if(!confirm('¿Borrar esto?'))return;await J(`/api/del/${t}/${id}`);loadData()}
 async function loadUsers(){const r=await fetch('/api/users');if(!r.ok)return;const u=await r.json();
@@ -352,17 +375,23 @@ if(j.ok){msg.textContent='Listo.';f.reset();loadData()}else msg.textContent=j.ms
 x.onerror=()=>msg.textContent='Se cortó la conexión.';x.send(new FormData(f));msg.textContent='Subiendo 0%'});
 
 function loginView(tab){
-if(ME.logged){$('#lbox').innerHTML=`<div class=card><h3>Hola, ${esc(ME.name)}</h3><p class=mut>${ME.admin?'Eres administrador: ya puedes subir y borrar contenido.':'Tu sesión está iniciada.'}</p><button class=btn id=out>Cerrar sesión</button></div>`;
+if(ME.logged){$('#lbox').innerHTML=`<div class=glass><h2>Hola, <span>${esc(ME.name)}</span></h2><p class=mut>${ME.admin?'Eres administrador: ya puedes subir y borrar contenido.':'Tu sesión está iniciada.'}</p><button class="btn wide" id=out>Cerrar sesión</button></div>`;
 $('#out').onclick=async()=>{await J('/api/logout');await boot()};return}
-$('#lbox').innerHTML=`<div class=row><button class="btn ${tab=='in'?'':'ghost'}" id=ti>Iniciar sesión</button><button class="btn ${tab=='up'?'':'ghost'}" id=tu>Registrarse</button></div>`+
-(tab=='in'?`<div class=card><input id=a1 placeholder="Nombre" autocomplete=username><input id=a2 placeholder="Número" inputmode=tel autocomplete=tel><input id=a3 type=password placeholder="Contraseña" autocomplete=current-password><button class=btn id=go>Entrar</button><p id=msg></p></div>`:
-`<div class=card><p class=mut>Pon tu nombre y número. Te daremos una contraseña para entrar cuando quieras.</p><input id=a1 placeholder="Tu nombre" autocomplete=name><input id=a2 placeholder="Tu número" inputmode=tel autocomplete=tel><button class=btn id=go>Registrarme</button><p id=msg></p></div>`);
-$('#ti').onclick=()=>loginView('in');$('#tu').onclick=()=>loginView('up');
+const up=tab=='up';
+$('#lbox').innerHTML=`<div class=glass><h2>${up?'Crear <span>cuenta</span>':'Bienvenido <span>de vuelta</span>'}</h2>
+<p class=mut>${up?'Únete hoy a SKY WEEB.':'Ingresa tus datos para acceder a tu cuenta.'}</p>
+<label for=a1>Nombre</label><div class=fld><input id=a1 placeholder="Tu nombre" autocomplete=${up?'name':'username'}></div>
+<label for=a2>Número</label><div class=fld><input id=a2 placeholder="Tu número" inputmode=tel autocomplete=tel></div>
+${up?'':`<label for=a3>Contraseña</label><div class=fld><input id=a3 type=password placeholder="••••••••" autocomplete=current-password><button type=button class=eye id=eye aria-label="Ver contraseña">&#128065;</button></div>`}
+<button class="btn wide" id=go>${up?'Crear cuenta':'Iniciar sesión'} &rarr;</button><p id=msg class=mut></p>
+<p class="mut c">${up?'¿Ya tienes cuenta? <a href="#" id=sw>Inicia sesión</a>':'¿No tienes cuenta? <a href="#" id=sw>Regístrate</a>'}</p></div>`;
+$('#sw').onclick=e=>{e.preventDefault();loginView(up?'in':'up')};
+if(!up)$('#eye').onclick=()=>{const i=$('#a3');i.type=i.type=='password'?'text':'password'};
 $('#go').onclick=async()=>{const m=$('#msg');
-if(tab=='in'){const j=await J('/api/login',{name:$('#a1').value,phone:$('#a2').value,password:$('#a3').value});
+if(!up){const j=await J('/api/login',{name:$('#a1').value,phone:$('#a2').value,password:$('#a3').value});
 if(j.ok)await boot();else m.textContent=j.msg}
 else{const j=await J('/api/register',{name:$('#a1').value,phone:$('#a2').value});
-if(j.ok){await boot();$('#lbox').insertAdjacentHTML('afterbegin',`<div class=card><h3>¡Registro listo, ${esc(j.name)}!</h3><p>Tu contraseña es:</p><div class=pw>${esc(j.password)}</div><p class=mut>Guárdala o toma captura. No se vuelve a mostrar. Si la pierdes, pídeme una nueva por WhatsApp.</p></div>`)}else m.textContent=j.msg}}}
+if(j.ok){await boot();$('#lbox').insertAdjacentHTML('afterbegin',`<div class=glass><h2>¡Registro <span>listo</span>, ${esc(j.name)}!</h2><p>Tu contraseña es:</p><div class=pw>${esc(j.password)}</div><p class=mut>Guárdala o toma captura. No se vuelve a mostrar. Si la pierdes, pídeme una nueva por WhatsApp.</p></div>`)}else m.textContent=j.msg}}}
 async function boot(){ME=await fetch('/api/me').then(r=>r.json());document.body.classList.toggle('isadm',!!ME.admin);loginView('in');await loadData();if(ME.admin)await loadUsers();route()}
 boot();
 
